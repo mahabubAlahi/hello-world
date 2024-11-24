@@ -61,6 +61,7 @@ class HelloWorldParams(BaseParams):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the parameters."""
         self.hello_world_string: str = self._ensure("hello_world_message", kwargs, str)
+        self.owner_string: str = self._ensure("owner", kwargs, str)
         super().__init__(*args, **kwargs)
 
 
