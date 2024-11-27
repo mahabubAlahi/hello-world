@@ -30,6 +30,7 @@ from packages.valory.skills.abstract_round_abci.behaviours import (
 from packages.valory.skills.hello_world_abci.models import HelloWorldParams, SharedState
 from packages.valory.skills.hello_world_abci.payloads import (
     CollectRandomnessPayload,
+    PrintCountPayload,
     PrintMessagePayload,
     RegistrationPayload,
     ResetPayload,
@@ -38,6 +39,7 @@ from packages.valory.skills.hello_world_abci.payloads import (
 from packages.valory.skills.hello_world_abci.rounds import (
     CollectRandomnessRound,
     HelloWorldAbciApp,
+    PrintCountRound,
     PrintMessageRound,
     RegistrationRound,
     ResetAndPauseRound,
@@ -204,6 +206,24 @@ class PrintMessageBehaviour(HelloWorldABCIBaseBehaviour, ABC):
         yield from self.wait_until_round_end()
 
         self.set_done()
+class PrintCountBehaviour(HelloWorldABCIBaseBehaviour, ABC):
+
+    matching_round = PrintCountRound
+
+    def async_act(self) -> Generator:
+
+        print_count = self.synchronized_data.print_count + 1
+
+        printed_message = f"Agent {self.context.agent_name} (address {self.context.agent_address}) in period {self.synchronized_data.period_count} says: The message has been printed {print_count} times"
+
+        self.context.logger.info(f"printed_message={printed_message}")
+
+        payload = PrintCountPayload(self.context.agent_address, print_count)
+
+        yield from self.send_a2a_transaction(payload)
+        yield from self.wait_until_round_end()
+
+        self.set_done()
 
 
 class ResetAndPauseBehaviour(HelloWorldABCIBaseBehaviour):
@@ -251,5 +271,6 @@ class HelloWorldRoundBehaviour(AbstractRoundBehaviour):
         CollectRandomnessBehaviour,  # type: ignore
         SelectKeeperBehaviour,  # type: ignore
         PrintMessageBehaviour,  # type: ignore
+        PrintCountBehaviour,  # type: ignore
         ResetAndPauseBehaviour,  # type: ignore
     }
