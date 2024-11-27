@@ -20,7 +20,7 @@
 
 from abc import ABC
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Type, cast
+from typing import Dict, FrozenSet, List, Optional, Tuple, Type, cast
 
 from packages.valory.skills.abstract_round_abci.base import (
     AbciApp,
@@ -31,7 +31,9 @@ from packages.valory.skills.abstract_round_abci.base import (
     CollectDifferentUntilAllRound,
     CollectSameUntilAllRound,
     CollectSameUntilThresholdRound,
+    CollectionRound,
     get_name,
+    DeserializedCollection
 )
 from packages.valory.skills.hello_world_abci.payloads import (
     CollectRandomnessPayload,
@@ -39,6 +41,7 @@ from packages.valory.skills.hello_world_abci.payloads import (
     RegistrationPayload,
     ResetPayload,
     SelectKeeperPayload,
+    PrintCountPayload,
 )
 
 
@@ -68,6 +71,23 @@ class SynchronizedData(
         return cast(
             List[str],
             self.db.get_strict("printed_messages"),
+        )
+    
+    @property
+    def participant_to_print_count(self) -> DeserializedCollection:
+        """Get the count of each participant."""
+        serialized = self.db.get_strict("participant_to_print_count")
+        deserialized = CollectionRound.deserialize_collection(serialized)
+        return cast(DeserializedCollection, deserialized)
+
+
+    @property
+    def print_count(self) -> int:
+        """Get the most voted printed messages count."""
+
+        return cast(
+            int,
+            self.db.get("print_count", 0),
         )
 
 
@@ -145,7 +165,17 @@ class PrintMessageRound(CollectDifferentUntilAllRound, HelloWorldABCIAbstractRou
             )
             return synchronized_data, Event.DONE
         return None
+class PrintCountRound(CollectSameUntilThresholdRound, HelloWorldABCIAbstractRound):
 
+    """A round for collecting the print count"""
+
+    payload_class = PrintCountPayload
+    synchronized_data_class = SynchronizedData
+    done_event = Event.DONE
+    none_event = Event.NONE
+    no_majority_event = Event.NO_MAJORITY
+    collection_key = get_name(SynchronizedData.participant_to_print_count)
+    selection_key = get_name(SynchronizedData.print_count)
 
 class ResetAndPauseRound(CollectSameUntilThresholdRound, HelloWorldABCIAbstractRound):
     """A round that represents that consensus is reached (the final round)"""
@@ -188,7 +218,12 @@ class HelloWorldAbciApp(AbciApp[Event]):
         3. PrintMessageRound
             - done: 4.
             - round timeout: 0.
-        4. ResetAndPauseRound
+        4. PrintCountRound
+            - done: 5.
+            - none: 4.
+            - no majority: 4.
+            - round timeout: 0.
+        5. ResetAndPauseRound
             - done: 1.
             - no majority: 0.
             - reset timeout: 0.
@@ -218,7 +253,13 @@ class HelloWorldAbciApp(AbciApp[Event]):
             Event.ROUND_TIMEOUT: RegistrationRound,
         },
         PrintMessageRound: {
+            Event.DONE: PrintCountRound,
+            Event.ROUND_TIMEOUT: RegistrationRound,
+        },
+        PrintCountRound: {
             Event.DONE: ResetAndPauseRound,
+            Event.NONE: PrintCountRound,
+            Event.NO_MAJORITY: PrintCountRound,
             Event.ROUND_TIMEOUT: RegistrationRound,
         },
         ResetAndPauseRound: {
@@ -231,3 +272,6 @@ class HelloWorldAbciApp(AbciApp[Event]):
         Event.ROUND_TIMEOUT: 30.0,
         Event.RESET_TIMEOUT: 30.0,
     }
+    cross_period_persisted_keys: FrozenSet[str] = frozenset(
+        [get_name(SynchronizedData.print_count)]
+    )
